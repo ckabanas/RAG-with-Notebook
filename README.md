@@ -85,7 +85,7 @@ spec:
       storage: 10Gi
 ```
 
-Click Create!
+Click Create! What you are doing there is reserving disk space to hold the Large Language Model you will later download from Hugging Face. Note that, while Large Language Models take a lot of resources to train, and also can need a fair amount of processing power and memory to run (depending on factors like the size of the prompt passed to it and more), you don't need a lot of storage space to hold your models. For the model we plan to us, you can see the range of sizes available on HUgging Face here: [https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/tree/main](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/tree/main). Why are the all sorts of options there? That is because different forms of Quantization are used for each version of the model listed there. Quantization is a technique to reduce the computational and memory costs of running inference, which also reduces the size of the model, trading off the accuracy of the model against the resources needed to run it. More on Quantization here: [https://www.ibm.com/think/topics/quantization](https://www.ibm.com/think/topics/quantization). In our case, as we are using the smaller Large Language Model called TinyLlama, we will be using the top end version of the model, as it is quite small to begin with. If you play around with larger models, such as the Granite models from IBM, picking a version of the model that balances the computational resources needed with the accuracy you need can be helpful. The MMA features of current IBM Power processors (IBM Power10 and later) can work with models that have less than ~13 billion parameters, but many start with smaller models (and consider quantized versions of larger models) to avoid demanding more resources than you need. Also, larger models can take longer to respond, as they work harder to give you better answers. In this demo, you don't need a lot of accuracy to get answers that are good enough, hence doing for a smaller model.
 
 ### 1.2 Deployment
 
@@ -165,6 +165,8 @@ spec:
 Click Create! 
 
 This could take a few moments as it initially fetches the model artifact (if not present) and then probes if the container is ready & live.
+
+It may be less than obvious what you just did there! Marvin was kind enough to wrap everything up in an image you can just deploy, which is great to get your demo up and running fast, but I know that the first time I did this, it worked so fast that I was left with my head spinning a bit! The code there is "YAML". As discussed here [https://www.ibm.com/think/topics/yaml](https://www.ibm.com/think/topics/yaml), “YAML” is an acronym which stands for "YAML Ain't Markup Language" or "Yet Another Markup Language." The former is meant to underscore that the language is intended for data rather than documents. As it is meant for data, not documentation, that would be part of why it may not be clear what it is doing! You can see early on in the YAML that "llama-cpp-server" is mentioned. [Llama.cpp](https://github.com/ggerganov/llama.cpp) was developed by Georgi Gerganov. It implements Meta’s LLaMa architecture in efficient C/C++. and the "cpp" part in the name is for C Plus Plus. You can read move about what Llama.cpp does and how it helps [here](https://pyimagesearch.com/2024/08/26/llama-cpp-the-ultimate-guide-to-efficient-llm-inference-and-applications/). 
 
 ### 1.3 Create a service
 
