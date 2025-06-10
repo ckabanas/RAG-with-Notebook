@@ -129,7 +129,7 @@ spec:
           resources: {}
       containers:
         - name: llama-cpp
-          image: quay.io/mgiessing/llama-cpp-server:master-b2921-3-gd233b507
+          image: quay.io/mgiessing/llama-cpp-server:latest
           args: ["-m", "/models/tinyllama-1.1b-chat-v1.0.Q8_0.gguf", "-c", "4096", "-t", "16"]
           ports:
             - containerPort: 8080
@@ -167,6 +167,8 @@ Click Create!
 This could take a few moments as it initially fetches the model artifact (if not present) and then probes if the container is ready & live.
 
 It may be less than obvious what you just did there! Marvin was kind enough to wrap everything up in an image you can just deploy, which is great to get your demo up and running fast, but I know that the first time I did this, it worked so fast that I was left with my head spinning a bit! The code there is "YAML". As discussed here [https://www.ibm.com/think/topics/yaml](https://www.ibm.com/think/topics/yaml), “YAML” is an acronym which stands for "YAML Ain't Markup Language" or "Yet Another Markup Language." The former is meant to underscore that the language is intended for data rather than documents. As it is meant for data, not documentation, that would be part of why it may not be clear what it is doing! You can see early on in the YAML that "llama-cpp-server" is mentioned. [Llama.cpp](https://github.com/ggerganov/llama.cpp) was developed by Georgi Gerganov. It implements Meta’s LLaMa architecture in efficient C/C++. and the "cpp" part in the name is for C Plus Plus. You can read move about what Llama.cpp does and how it helps [here](https://pyimagesearch.com/2024/08/26/llama-cpp-the-ultimate-guide-to-efficient-llm-inference-and-applications/). 
+You may also spot in the YAML that we mount the Persistent Volume Claim we created earlier on the path /models. We then use the "curl" command to pull down the TinyLlama model into that location, from Hugging Face. So, we shall be using TinyLlama in Llama.cpp. But, Llama.cpp can support other model types too, not just Llama models. You could, for example, bring down a version of the IBM Granite models, in "GGUF" format, and Llama.cpp could use that instead. You don't need to only run Llama models with Llama.cpp, but you do need to use the GGUF format models for the Llama.cpp server to be able to serve them up. 
+To use a different model, we could change or add another "curl" statement, and get the model into the /models path. Once done, we can change the "args" to point to whichever model we want to run. You can see some other arguements being used there too. You can see the various arguments available to be used [here](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md). The "-c" set the size of the prompt context to the default of 4096, and the "-t" sets the number of threads to use during generation to 16. With environments where more threads can be usefully used, you may want to alter that value and see if you can improve the performance of the generated response. Lots of other parameters also available to play with as you like!
 
 ### 1.3 Create a service
 
@@ -245,9 +247,13 @@ First don't change any of the parameters and just **scroll down to to input fiel
 
 You can ask any question you like, but keep in mind you're using a small model and there are more powerful models out there for general conversation.
 
+What I often do is ask some general question, maybe about the city I am presenting in at the time. A basic question like that usually results in a fairly accurate and acceptable generated response. What I then do is follow up with the question "What is Mr Dursley's job?". The LLM then usually hallucinates, making up some answer that links the city in the previous question with some fabricated Mr Dursley. That is a useful response, as it illustrates the well known problem with GenAI, and you can read more about hallucinations here: [https://www.ibm.com/think/topics/ai-hallucinations](https://www.ibm.com/think/topics/ai-hallucinations). 
+
 Feel free to experiment with the model parameters like temperature and predictions.
 
 In the second part you'll see that smaller, resource-efficient models like this can answer questions based on a given context and instructions quite well! That will demonstrate that huge models aren't always required!
+
+In this second part, we can build on the example of how we demonstrated what a hallucination looks like. Using the Retrieval Augmented Generation (RAG) process we shall demonstrate in this second part, we can show how to make hallucinations much less likely, and also how to make the model able to answer questions on topics that the model alone could not answer, without the need to retrain. This can help users trust the solution, as we know where the answers came from and how up to date they are, which can otherwise be an issue that GenAI is subject too.
 
 ## Part 2: Enhance with RAG using Milvus & LangChain
 
@@ -255,12 +261,21 @@ In the second part you will create a vector database (Milvus) that you'll be usi
 
 ### 2.1 Deploy Milvus
 
+Now, for some of the following commands, you will need the "oc", or OpenShift Client. If you don't already have that, you can get it from the OpenShift session you are already using. Thank you to Andrew Laidlaw for this one! Click on the question mark top right in the OpenShift GUI (next to your username) and select Command Line Tools.
+
+![image](images/oc-download.jpg)
+
+You can then download the appropriate version for the device you are using to connect to OpenShift, such as a Windows or Apple Mac. Install that on your device before running the "oc" commands below.
+
 You can stay in the same OpenShift project.
 
 You will need your OpenShift login token which you can get after logging in to the WebUI, **click on your username** -> **Copy login command** -> **Login again with your credentials** -> **Display token**
 
+Open the terminal (command prompt or PowerShell) and login to your cluster using the token you just copied. Check at this stage what project you are then connected with. If it is not the project where we put the "llama-cpp-server" instance earlier, change the project to that with:
 
-Open the terminal (command prompt or PowerShell) and login to your cluster using the token you just copied.
+```
+oc project llm-on-techzone
+```
 
 Clone the repository using Github Desktop or use the terminal:
 
@@ -271,7 +286,16 @@ git clone https://github.com/mgiessing/bcn-lab-2084
 cd bcn-lab-2084
 ```
 
-Now you're going to create the milvus deployment:
+Now you're going to create the milvus deployment. Milvus is a vector database, and you can read more about that here: [https://www.ibm.com/think/topics/milvus](https://www.ibm.com/think/topics/milvus)
+Vector databases store and manage datasets in the form of vectors. Vectors are arrays of numbers that represent complex concepts and objects, such as words and images.  
+
+Unstructured data — such as the text we are about to use — makes up a significant portion of enterprise data today, but traditional databases are often ill-suited to organize and manage this data.  
+
+Organizations can feed this data to specialized deep learning embedding models, which output vector representations called “embeddings.” For example, the word “cat” might be represented by the vector [0.2, -0.4, 0.7], while the word “dog” might be represented by [0.6, 0.1, 0.5].
+
+Transforming data into vectors enables organizations to store different kinds of unstructured data in a shared format in one vector database. We are going to load text from Harry Potter into our Milvus vector database, which will then be used to pull back "chunks" of text that have words in the text that are similar to the question we ask.
+
+So, to deploy our instance of milvus, run these commands:
 
 ```
 cd Part2-RAG/milvus-deployment
@@ -287,8 +311,9 @@ cd ..
 ```
 
 Monitor deployment using:
-
-`oc get pods -w`
+```
+oc get pods -w
+```
 
 Wait until you see etcd-deployment, milvus-deployment and minio-deployment in the "running" state.
 
@@ -296,7 +321,9 @@ The `-w, --watch` command can be interrupted with Ctrl+C.
 
 ### 2.2 Deploy Notebookserver
 
-To interact with Milvus and your Large Language Model you're using a Notebookserver:
+To interact with Milvus and your Large Language Model you're using a Notebook server. A Jupyter Notebook is an open source web application that allows data scientists to create and share documents that include live code, equations, and other multimedia resources. You can find out more about Jupyter Notebooks here: [https://jupyter-notebook.readthedocs.io/en/latest/](https://jupyter-notebook.readthedocs.io/en/latest/)
+
+We shall deploy our Jupyter Notebook server in another little container with these commands:
 
 ```bash
 cd nb-deployment
@@ -307,20 +334,30 @@ oc apply -f .
 
 Verify the notebook pod is running:
 
-`oc get pods --selector=app=cpu-notebook -w`
+```
+oc get pods --selector=app=cpu-notebook -w
+```
 
-Once the container is deployed you should be able to access it using the link from: 
+You can also check on the deployments by returning to the OpenShift GUI, in the Developer view, waiting for the dark blue circle to surround our new "cpu-notebook" deployment. Access it using the arrow icon on the top right of the container.
 
-`oc get route cpu-notebook -o jsonpath='{.spec.host}'`
+When you open the notebook server, drag & drop the notebook (`RAG.ipynb`) from this repo into the notebook server. The "RAG.ipynb" file is back in the starting directory for the cloned repo you now have on your laptop, so you can get back to that by dropping back two layers in your cloned repo:
 
-The URL should look like this:
-
-http://cpu-notebook-llm-on-techzone.apps.pXXXX.cecc.ihost.com/ (with the XXXX changing for your reserved environment)
-
-If you open the notebook server in your browser now drag & drop the notebook (`RAG.ipynb`) from this repo into the notebook server.
+```
+cd ..
+```
+```
+cd ..
+```
+Or, it is also on this page you are reading here, so download it by clicking on it at the top of the page, and drag and drop either version into the Notebook in your browser. Then, double click on the "RAG.ipynb" file you can now see in the Notebook to open in. Use the "run" arrow on each stage of the code, and let each section execute. You can tell when it is finished running as the "[*]" that appears next to the code as it runs will change into a number within the square brackets. If you click "run" too quickly, that is not a problem, as each section of code will need to finish before it moves on to the next. So you may just have a couple of sections waiting in "[*]", and you can just let them finish in turn.
 
 Follow the steps inside the notebook!
+
+Once done, you should be able to say what the job of the character in Happy Potter who's name was Mr Dursley's job actually was!
+
+You may then want to return to the browser session you had with the Lllama.cpp server at the end of Part 1. Here, you can reset the session with the LLM, and maybe paste in the whole prompt you ended up with at the end of Part 2, and the model should give you the same answer. Then, reset your session again, and repeat the earlier simple questions about a city, followed by "What was Mr Dursley's job?" without the advanced prompt this time. What you should show there is that the model has not actually learned anything, and you go back to hallucinating. That is useful, as a common assumption is that the GenAI models continue to learn, and that data you put into them can be used by these models to learn. But, these LLMs stop learning when the training phase is done, and so they don't learn from the data you pass to them. But, with a "fancy prompt", they can give you usefil and helpful answers. So, your data can remain safely inside your organisation, and hopefully inside IBM Power, and you don't need to go to the expense and effort of training, or retraining, a Large Language Model to get it to give you useful answers from your data. Instead, use RAG on IBM Power, and keep control!
 
 ## Conclusion
 
 Congratulations, you've successfully finished the lab `Deploy a Large Language Model on Power10` and learned how to use that as a standalone solution as well as combining it with more complex technologies such as Retrieval Augmented Generation (RAG).
+
+I have updated these instructions based on feedback from some of the helpful people who have tried this out, so, if you have feedback too, do let me know, and I can keep improving this!
