@@ -129,7 +129,7 @@ spec:
           resources: {}
       containers:
         - name: llama-cpp
-          image: quay.io/mgiessing/llama-cpp-server:master-b2921-3-gd233b507
+          image: quay.io/mgiessing/llama-cpp-server:latest
           args: ["-m", "/models/tinyllama-1.1b-chat-v1.0.Q8_0.gguf", "-c", "4096", "-t", "16"]
           ports:
             - containerPort: 8080
@@ -137,25 +137,6 @@ spec:
           volumeMounts:
             - name: llama-models
               mountPath: /models
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 8080
-              scheme: HTTP
-            initialDelaySeconds: 5
-            timeoutSeconds: 1
-            periodSeconds: 10
-            successThreshold: 1
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 8080
-              scheme: HTTP
-            timeoutSeconds: 1
-            periodSeconds: 10
-            successThreshold: 1
-            failureThreshold: 3
       volumes:
         - name: llama-models
           persistentVolumeClaim:
